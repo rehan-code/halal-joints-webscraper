@@ -15,6 +15,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import json
 import os
+import csv
 
 async def scrape_restaurant_info():
     """
@@ -42,7 +43,7 @@ async def scrape_restaurant_info():
             print("Waiting for content to load...")
             try:
                 # Wait for some key elements to be visible
-                await page.wait_for_selector('a[href^="/restaurant/"]', timeout=10000)
+                await page.wait_for_selector('div > section > div > a[href^="/restaurant/"]', timeout=10000)
                 print("Found restaurant links, page seems loaded")
             except Exception as e:
                 print(f"Timeout waiting for restaurant links: {e}")
@@ -93,7 +94,6 @@ async def scrape_restaurant_info():
                             info = {
                                 "title": title,
                                 "image": img_src,
-                                "link": href
                             }
                             
                             restaurant_info.append(info)
@@ -125,7 +125,7 @@ async def scrape_restaurant_info():
 
 async def main():
     """
-    Main function to scrape restaurant information and save it to a JSON file.
+    Main function to scrape restaurant information and save it to a CSV file.
     """
     restaurant_info = await scrape_restaurant_info()
     
@@ -134,10 +134,15 @@ async def main():
         for i, info in enumerate(restaurant_info, 1):
             print(f"{i}. {info['title']} | Image: {info['image']}")
         
-        # Save to JSON file
-        output_file = 'restaurant_info.json'
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump({"restaurants": restaurant_info}, f, indent=4)
+        # Save to CSV file
+        output_file = 'restaurant_info.csv'
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = ['title', 'image']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            
+            writer.writeheader()
+            for restaurant in restaurant_info:
+                writer.writerow(restaurant)
         
         print(f"\nRestaurant information saved to {output_file}")
         print(f"Full path: {os.path.abspath(output_file)}")
