@@ -1,9 +1,11 @@
 """
-Restaurant Title Scraper
+Restaurant Information Scraper
 
-This script extracts restaurant titles from the Halal Joints website for Central London.
-It uses Playwright to handle JavaScript rendering and extract the restaurant names.
-The titles follow the structure: <a> -> <article> -> the second <div> -> <p> (title)
+This script extracts restaurant information from the Halal Joints website for Central London.
+It uses Playwright to handle JavaScript rendering and extract restaurant names and images.
+The extraction follows the structure: 
+1. Find all <a> elements with href starting with '/restaurant/'
+2. For each link, extract the title and image from its children using CSS selectors
 
 Usage:
     python get_restaurant_titles.py
@@ -13,86 +15,100 @@ import asyncio
 from playwright.async_api import async_playwright
 import json
 import os
-import re
 
-def clean_restaurant_name(name):
+async def scrape_restaurant_info():
     """
-    Cleans the restaurant name by removing verification information and other non-name text.
-    
-    Args:
-        name (str): The raw restaurant name text
-        
-    Returns:
-        str: The cleaned restaurant name
-    """
-    # Remove verification information (e.g., "verified a month ago")
-    name = re.sub(r'verified.*', '', name)
-    
-    # Remove status information (e.g., "No longer Halal")
-    name = re.sub(r'No longer Halal.*', '', name)
-    
-    # Remove any other common patterns that aren't part of the name
-    name = re.sub(r'\(.*\)', '', name)  # Remove text in parentheses
-    
-    # Trim whitespace
-    name = name.strip()
-    
-    return name
-
-async def scrape_restaurant_titles():
-    """
-    Scrapes restaurant titles from the Halal Joints website for Central London.
+    Scrapes restaurant information (titles and images) from the Halal Joints website for Central London.
     
     Returns:
-        list: A list of restaurant titles
+        list: A list of dictionaries containing restaurant information (title and image)
     """
     url = "https://www.halaljoints.com/neighbourhood/central-london-united-kingdom"
-    restaurant_titles = []
+    restaurant_info = []
     
     async with async_playwright() as p:
         print(f"Launching browser...")
         # Launch browser with a larger viewport to ensure more content is loaded
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True)  # Use headless=True for production
         context = await browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = await context.new_page()
         
         try:
             print(f"Navigating to {url}...")
-            # Use a longer timeout and wait for network idle
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            # Use a shorter timeout and don't wait for network idle
+            await page.goto(url, timeout=30000)
             
             # Wait for content to load
             print("Waiting for content to load...")
-            await page.wait_for_load_state("networkidle")
-            await asyncio.sleep(5)  # Longer wait to ensure JS rendering completes
-            
-            print("Extracting restaurant titles...")
+            try:
+                # Wait for some key elements to be visible
+                await page.wait_for_selector('a[href^="/restaurant/"]', timeout=10000)
+                print("Found restaurant links, page seems loaded")
+            except Exception as e:
+                print(f"Timeout waiting for restaurant links: {e}")
+                # Continue anyway
             
             # Take a screenshot for debugging
             await page.screenshot(path="webpage_full.png", full_page=True)
             print("Saved full page screenshot as webpage_full.png")
             
-            # Method: Use CSS selector approach for the exact structure
-            print("Using CSS selector approach to extract restaurant titles...")
+            # Get all restaurant links
+            print("Finding all restaurant links...")
+            restaurant_links = await page.query_selector_all('a[href^="/restaurant/"]')
+            print(f"Found {len(restaurant_links)} restaurant links")
             
-            # CSS selector for the structure: a > article > div:nth-child(2) > p:nth-child(1)
-            elements = await page.query_selector_all('a > article > div:nth-child(2) > p:nth-child(1)')
-            
-            if elements and len(elements) > 0:
-                print(f"Found {len(elements)} elements with CSS selector")
-                for element in elements:
-                    text = await element.text_content()
-                    text = text.strip()
+            # Process each link to extract restaurant information using CSS selectors
+            for i, link in enumerate(restaurant_links):
+                try:
+                    # Get the href attribute (restaurant link)
+                    href = await link.get_attribute('href')
+                    print(f"Processing link {i+1}/{len(restaurant_links)}: {href}")
                     
-                    # Clean the restaurant name
-                    cleaned_name = clean_restaurant_name(text)
+                    # Extract restaurant title using CSS selectors
+                    # Try different selectors to find the title
+                    title_element = None
                     
-                    if cleaned_name:
-                        restaurant_titles.append(cleaned_name)
-                        print(f"Found restaurant: {cleaned_name}")
-            else:
-                print("No restaurant titles found with CSS selector.")
-                print("The website might have changed its structure.")
+                    # Try to find the title in article > div:nth-child(2) > p
+                    title_element = await link.query_selector('article > div:nth-child(2) > p')
+                    
+                    if not title_element:
+                        # Try to find the title in any p element within the article
+                        title_element = await link.query_selector('article p')
+                    
+                    if title_element:
+                        title_text = await title_element.text_content()
+                        title = title_text.strip()
+                        
+                        # Extract restaurant image using CSS selectors
+                        img_element = await link.query_selector('article > div:nth-child(1) > img')
+                        
+                        if not img_element:
+                            # Try to find any img element within the article
+                            img_element = await link.query_selector('article img')
+                        
+                        if img_element:
+                            img_src = await img_element.get_attribute('src')
+                            
+                            # Create restaurant info dictionary
+                            info = {
+                                "title": title,
+                                "image": img_src,
+                                "link": href
+                            }
+                            
+                            restaurant_info.append(info)
+                            print(f"Added restaurant: {title} | Image: {img_src}")
+                        else:
+                            print(f"No image found for link {i+1}")
+                    else:
+                        print(f"No title found for link {i+1}")
+                        
+                        # Debug: Print the HTML structure of the link
+                        link_html = await page.evaluate('(element) => element.outerHTML', link)
+                        print(f"Link HTML structure: {link_html[:200]}...")  # Print first 200 chars
+                        
+                except Exception as e:
+                    print(f"Error processing link {i+1}: {e}")
             
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -101,32 +117,32 @@ async def scrape_restaurant_titles():
             # Close the browser
             await browser.close()
     
-    # Sort
-    restaurant_titles = sorted(restaurant_titles)
-    print(f"Found {len(restaurant_titles)} unique restaurant titles")
+    # Sort by title
+    restaurant_info = sorted(restaurant_info, key=lambda x: x["title"])
+    print(f"Found {len(restaurant_info)} restaurants")
     
-    return restaurant_titles
+    return restaurant_info
 
 async def main():
     """
-    Main function to scrape restaurant titles and save them to a JSON file.
+    Main function to scrape restaurant information and save it to a JSON file.
     """
-    restaurant_titles = await scrape_restaurant_titles()
+    restaurant_info = await scrape_restaurant_info()
     
-    if restaurant_titles:
-        print(f"\nFound {len(restaurant_titles)} restaurant titles:")
-        for i, title in enumerate(restaurant_titles, 1):
-            print(f"{i}. {title}")
+    if restaurant_info:
+        print(f"\nFound {len(restaurant_info)} restaurants:")
+        for i, info in enumerate(restaurant_info, 1):
+            print(f"{i}. {info['title']} | Image: {info['image']}")
         
         # Save to JSON file
-        output_file = 'restaurant_titles.json'
+        output_file = 'restaurant_info.json'
         with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump({"restaurants": restaurant_titles}, f, indent=4)
+            json.dump({"restaurants": restaurant_info}, f, indent=4)
         
-        print(f"\nRestaurant titles saved to {output_file}")
+        print(f"\nRestaurant information saved to {output_file}")
         print(f"Full path: {os.path.abspath(output_file)}")
     else:
-        print("\nNo restaurant titles found.")
+        print("\nNo restaurant information found.")
         print("The website might have a unique structure or be protected against scraping.")
 
 if __name__ == "__main__":
