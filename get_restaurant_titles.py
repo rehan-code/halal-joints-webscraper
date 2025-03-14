@@ -2,10 +2,11 @@
 Restaurant Information Scraper
 
 This script extracts restaurant information from the Halal Joints website for Central London.
-It uses Playwright to handle JavaScript rendering and extract restaurant names and images.
+It uses Playwright to handle JavaScript rendering and extract restaurant names, images, and addresses.
 The extraction follows the structure: 
 1. Find all <a> elements with href starting with '/restaurant/'
 2. For each link, extract the title and image from its children using CSS selectors
+3. Visit the restaurant page to extract the address
 
 Usage:
     python get_restaurant_titles.py
@@ -17,12 +18,55 @@ import json
 import os
 import csv
 
+async def scrape_restaurant_address(context, href, title):
+    """
+    Scrapes the address from a restaurant's page.
+    
+    Args:
+        context: The browser context to use
+        href: The href link to the restaurant page
+        title: The restaurant title (for logging purposes)
+        
+    Returns:
+        str: The restaurant address or empty string if not found
+    """
+    address = ""
+    try:
+        print(f"Visiting restaurant page: {href}")
+        restaurant_url = f"https://www.halaljoints.com{href}"
+        restaurant_page = await context.new_page()
+        await restaurant_page.goto(restaurant_url, timeout=30000)
+        
+        # Wait for the address element to be visible
+        try:
+            await restaurant_page.wait_for_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a', timeout=10000)
+            
+            # Extract the address
+            address_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a')
+            
+            if address_element:
+                address = await address_element.text_content()
+                address = address.strip()
+                print(f"Found address: {address}")
+            else:
+                print(f"No address element found for {title}")
+        except Exception as e:
+            print(f"Error waiting for address element: {e}")
+        
+        # Close the restaurant page
+        await restaurant_page.close()
+        
+    except Exception as e:
+        print(f"Error visiting restaurant page: {e}")
+    
+    return address
+
 async def scrape_restaurant_info():
     """
-    Scrapes restaurant information (titles and images) from the Halal Joints website for Central London.
+    Scrapes restaurant information (titles, images, and addresses) from the Halal Joints website for Central London.
     
     Returns:
-        list: A list of dictionaries containing restaurant information (title and image)
+        list: A list of dictionaries containing restaurant information (title, image, and address)
     """
     url = "https://www.halaljoints.com/neighbourhood/central-london-united-kingdom"
     restaurant_info = []
@@ -43,7 +87,7 @@ async def scrape_restaurant_info():
             print("Waiting for content to load...")
             try:
                 # Wait for some key elements to be visible
-                await page.wait_for_selector('div > section > div > a[href^="/restaurant/"]', timeout=10000)
+                await page.wait_for_selector('a[href^="/restaurant/"]', timeout=10000)
                 print("Found restaurant links, page seems loaded")
             except Exception as e:
                 print(f"Timeout waiting for restaurant links: {e}")
@@ -94,10 +138,15 @@ async def scrape_restaurant_info():
                             info = {
                                 "title": title,
                                 "image": img_src,
+                                "link": href,
+                                "address": ""  # Will be populated when visiting the restaurant page
                             }
                             
+                            # Visit the restaurant page to get the address
+                            info["address"] = await scrape_restaurant_address(context, href, title)
+                            
                             restaurant_info.append(info)
-                            print(f"Added restaurant: {title} | Image: {img_src}")
+                            print(f"Added restaurant: {title} | Image: {img_src} | Address: {info['address']}")
                         else:
                             print(f"No image found for link {i+1}")
                     else:
@@ -132,12 +181,12 @@ async def main():
     if restaurant_info:
         print(f"\nFound {len(restaurant_info)} restaurants:")
         for i, info in enumerate(restaurant_info, 1):
-            print(f"{i}. {info['title']} | Image: {info['image']}")
+            print(f"{i}. {info['title']} | Address: {info['address']} | Image: {info['image']}")
         
         # Save to CSV file
         output_file = 'restaurant_info.csv'
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            fieldnames = ['title', 'image']
+            fieldnames = ['title', 'address', 'image', 'link']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
             writer.writeheader()

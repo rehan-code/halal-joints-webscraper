@@ -33,13 +33,13 @@ This will:
 1. Launch a headless browser
 2. Navigate to the Halal Joints website for Central London
 3. Extract restaurant titles using various methods
-4. Save the results to `restaurant_titles.json`
+4. Save the results to `restaurant_info.csv`
 
 ## Files in this Project
 
 - `get_restaurant_titles.py` - The main script for extracting restaurant titles
 - `requirements.txt` - List of required Python packages
-- `restaurant_titles.json` - Output file containing the extracted restaurant titles
+- `restaurant_info.csv` - Output file containing the extracted restaurant titles
 - `README.md` - This documentation file
 
 ## Requirements
