@@ -20,7 +20,7 @@ import csv
 
 async def scrape_restaurant_address(context, href, title):
     """
-    Scrapes the address from a restaurant's page.
+    Scrapes the address and region from a restaurant's page.
     
     Args:
         context: The browser context to use
@@ -28,7 +28,7 @@ async def scrape_restaurant_address(context, href, title):
         title: The restaurant title (for logging purposes)
         
     Returns:
-        str: The restaurant address or empty string if not found
+        str: The restaurant address with region or empty string if not found
     """
     address = ""
     try:
@@ -39,7 +39,7 @@ async def scrape_restaurant_address(context, href, title):
         
         # Wait for the address element to be visible
         try:
-            await restaurant_page.wait_for_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a', timeout=10000)
+            await restaurant_page.wait_for_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a', timeout=20000)
             
             # Extract the address
             address_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a')
@@ -48,6 +48,20 @@ async def scrape_restaurant_address(context, href, title):
                 address = await address_element.text_content()
                 address = address.strip()
                 print(f"Found address: {address}")
+                
+                # Extract the region
+                region_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > div > a')
+                
+                if region_element:
+                    region = await region_element.text_content()
+                    region = region.strip()
+                    print(f"Found region: {region}")
+                    
+                    # Append region to address
+                    if region:
+                        address = f"{address}, {region}"
+                else:
+                    print(f"No region element found for {title}")
             else:
                 print(f"No address element found for {title}")
         except Exception as e:
