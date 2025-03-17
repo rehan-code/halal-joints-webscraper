@@ -20,7 +20,7 @@ import csv
 
 async def scrape_restaurant_address(context, href, title):
     """
-    Scrapes the address and region from a restaurant's page.
+    Scrapes the address, Instagram handle, and phone number from a restaurant's page.
     
     Args:
         context: The browser context to use
@@ -28,9 +28,12 @@ async def scrape_restaurant_address(context, href, title):
         title: The restaurant title (for logging purposes)
         
     Returns:
-        str: The restaurant address with region or empty string if not found
+        tuple: A tuple containing (address, instagram, phone) strings or empty strings if not found
     """
     address = ""
+    instagram = ""
+    phone = ""
+    
     try:
         print(f"Visiting restaurant page: {href}")
         restaurant_url = f"https://www.halaljoints.com{href}"
@@ -48,24 +51,31 @@ async def scrape_restaurant_address(context, href, title):
                 address = await address_element.text_content()
                 address = address.strip()
                 print(f"Found address: {address}")
-                
-                # Extract the region
-                region_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > div > a')
-                
-                if region_element:
-                    region = await region_element.text_content()
-                    region = region.strip()
-                    print(f"Found region: {region}")
-                    
-                    # Append region to address
-                    if region:
-                        address = f"{address}, {region}"
-                else:
-                    print(f"No region element found for {title}")
             else:
                 print(f"No address element found for {title}")
+                
+            # Extract Instagram handle
+            instagram_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > a.flex.flex-row.space-x-1.items-center.text-gray-700.lg\\:hover\\:text-gray-900 > span')
+            
+            if instagram_element:
+                instagram = await instagram_element.text_content()
+                instagram = instagram.strip()
+                print(f"Found Instagram: {instagram}")
+            else:
+                print(f"No Instagram handle found for {title}")
+                
+            # Extract phone number
+            phone_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > a.flex.flex-row.space-x-2.items-center.text-gray-700.lg\\:hover\\:text-gray-900 > span')
+            
+            if phone_element:
+                phone = await phone_element.text_content()
+                phone = phone.strip()
+                print(f"Found phone: {phone}")
+            else:
+                print(f"No phone number found for {title}")
+                
         except Exception as e:
-            print(f"Error waiting for address element: {e}")
+            print(f"Error waiting for elements: {e}")
         
         # Close the restaurant page
         await restaurant_page.close()
@@ -73,7 +83,7 @@ async def scrape_restaurant_address(context, href, title):
     except Exception as e:
         print(f"Error visiting restaurant page: {e}")
     
-    return address
+    return address, instagram, phone
 
 async def scrape_restaurant_info():
     """
@@ -101,7 +111,7 @@ async def scrape_restaurant_info():
             print("Waiting for content to load...")
             try:
                 # Wait for some key elements to be visible
-                await page.wait_for_selector('a[href^="/restaurant/"]', timeout=10000)
+                await page.wait_for_selector('#__next > div > div.w-full.relative > div > div > section > div.grid.grid-cols-1.sm\:grid-cols-2.md\:grid-cols-3.gap-8 > a:nth-child(1)', timeout=10000)
                 print("Found restaurant links, page seems loaded")
             except Exception as e:
                 print(f"Timeout waiting for restaurant links: {e}")
@@ -153,14 +163,19 @@ async def scrape_restaurant_info():
                                 "title": title,
                                 "image": img_src,
                                 "link": href,
-                                "address": ""  # Will be populated when visiting the restaurant page
+                                "address": "",  # Will be populated when visiting the restaurant page
+                                "instagram": "",
+                                "phone": ""
                             }
                             
-                            # Visit the restaurant page to get the address
-                            info["address"] = await scrape_restaurant_address(context, href, title)
+                            # Visit the restaurant page to get the address, Instagram handle, and phone number
+                            address, instagram, phone = await scrape_restaurant_address(context, href, title)
+                            info["address"] = address
+                            info["instagram"] = instagram
+                            info["phone"] = phone
                             
                             restaurant_info.append(info)
-                            print(f"Added restaurant: {title} | Image: {img_src} | Address: {info['address']}")
+                            print(f"Added restaurant: {title} | Image: {img_src} | Address: {info['address']} | Instagram: {info['instagram']} | Phone: {info['phone']}")
                         else:
                             print(f"No image found for link {i+1}")
                     else:
@@ -195,12 +210,12 @@ async def main():
     if restaurant_info:
         print(f"\nFound {len(restaurant_info)} restaurants:")
         for i, info in enumerate(restaurant_info, 1):
-            print(f"{i}. {info['title']} | Address: {info['address']} | Image: {info['image']}")
+            print(f"{i}. {info['title']} | Address: {info['address']} | Instagram: {info['instagram']} | Phone: {info['phone']} | Image: {info['image']}")
         
         # Save to CSV file
         output_file = 'restaurant_info.csv'
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            fieldnames = ['title', 'address', 'image', 'link']
+            fieldnames = ['title', 'address', 'instagram', 'phone', 'image', 'link']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
             writer.writeheader()
