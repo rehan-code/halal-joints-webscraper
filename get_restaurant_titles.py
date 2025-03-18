@@ -28,10 +28,10 @@ async def scrape_restaurant_address(context, href, title):
         title: The restaurant title (for logging purposes)
         
     Returns:
-        tuple: A tuple containing (address, instagram, phone) strings or empty strings if not found
+        tuple: A tuple containing (address, social_links, phone) where social_links is a JSON string
     """
     address = ""
-    instagram = ""
+    social_links = []
     phone = ""
     
     try:
@@ -42,7 +42,7 @@ async def scrape_restaurant_address(context, href, title):
         
         # Wait for the address element to be visible
         try:
-            await restaurant_page.wait_for_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a', timeout=20000)
+            await restaurant_page.wait_for_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a', timeout=10000)
             
             # Extract the address
             address_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > div.w-full.flex.flex-col.space-y-1.items-start > a')
@@ -61,6 +61,17 @@ async def scrape_restaurant_address(context, href, title):
                 instagram = await instagram_element.text_content()
                 instagram = instagram.strip()
                 print(f"Found Instagram: {instagram}")
+                
+                # Get the actual Instagram URL
+                instagram_link_element = await restaurant_page.query_selector('#__next > div.relative.w-full.bg-white.flex.flex-col.lg\\:px-4 > article > div:nth-child(3) > div.w-full.lg\\:w-7\\/12.flex.flex-col.space-y-5.px-4 > a.flex.flex-row.space-x-1.items-center.text-gray-700.lg\\:hover\\:text-gray-900')
+                if instagram_link_element:
+                    instagram_url = await instagram_link_element.get_attribute('href')
+                    if instagram_url:
+                        social_links.append({
+                            "url": instagram_url,
+                            "platform": "Instagram"
+                        })
+                        print(f"Added Instagram URL: {instagram_url}")
             else:
                 print(f"No Instagram handle found for {title}")
                 
@@ -83,14 +94,15 @@ async def scrape_restaurant_address(context, href, title):
     except Exception as e:
         print(f"Error visiting restaurant page: {e}")
     
-    return address, instagram, phone
+    return address, social_links, phone
 
 async def scrape_restaurant_info():
     """
-    Scrapes restaurant information (titles, images, and addresses) from the Halal Joints website for Central London.
+    Scrapes restaurant information (titles, images, addresses, social links, and phone numbers) 
+    from the Halal Joints website for Central London.
     
     Returns:
-        list: A list of dictionaries containing restaurant information (title, image, and address)
+        list: A list of dictionaries containing restaurant information
     """
     url = "https://www.halaljoints.com/neighbourhood/central-london-united-kingdom"
     restaurant_info = []
@@ -111,7 +123,7 @@ async def scrape_restaurant_info():
             print("Waiting for content to load...")
             try:
                 # Wait for some key elements to be visible
-                await page.wait_for_selector('#__next > div > div.w-full.relative > div > div > section > div.grid.grid-cols-1.sm\:grid-cols-2.md\:grid-cols-3.gap-8 > a:nth-child(1)', timeout=10000)
+                await page.wait_for_selector('#__next > div > div.w-full.relative > div > div > section > div.grid.grid-cols-1.sm\\:grid-cols-2.md\\:grid-cols-3.gap-8 > a:nth-child(1)', timeout=10000)
                 print("Found restaurant links, page seems loaded")
             except Exception as e:
                 print(f"Timeout waiting for restaurant links: {e}")
@@ -163,19 +175,20 @@ async def scrape_restaurant_info():
                                 "title": title,
                                 "image": img_src,
                                 "link": href,
-                                "address": "",  # Will be populated when visiting the restaurant page
-                                "instagram": "",
+                                "address": "",
+                                "social_links": "[]",
                                 "phone": ""
                             }
                             
-                            # Visit the restaurant page to get the address, Instagram handle, and phone number
-                            address, instagram, phone = await scrape_restaurant_address(context, href, title)
+                            # Visit the restaurant page to get the address, social links, and phone number
+                            address, social_links_json, phone = await scrape_restaurant_address(context, href, title)
                             info["address"] = address
-                            info["instagram"] = instagram
+                            info["social_links"] = social_links_json
                             info["phone"] = phone
                             
                             restaurant_info.append(info)
-                            print(f"Added restaurant: {title} | Image: {img_src} | Address: {info['address']} | Instagram: {info['instagram']} | Phone: {info['phone']}")
+                            print(f"Added restaurant: {title} | Image: {img_src} | Address: {info['address']} | Social Links: {info['social_links']} | Phone: {info['phone']}")
+                        
                         else:
                             print(f"No image found for link {i+1}")
                     else:
@@ -210,12 +223,12 @@ async def main():
     if restaurant_info:
         print(f"\nFound {len(restaurant_info)} restaurants:")
         for i, info in enumerate(restaurant_info, 1):
-            print(f"{i}. {info['title']} | Address: {info['address']} | Instagram: {info['instagram']} | Phone: {info['phone']} | Image: {info['image']}")
+            print(f"{i}. {info['title']} | Address: {info['address']} | Social Links: {info['social_links']} | Phone: {info['phone']} | Image: {info['image']}")
         
         # Save to CSV file
         output_file = 'restaurant_info.csv'
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            fieldnames = ['title', 'address', 'instagram', 'phone', 'image', 'link']
+            fieldnames = ['title', 'address', 'social_links', 'phone', 'image', 'link']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
             writer.writeheader()
