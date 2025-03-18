@@ -228,11 +228,12 @@ async def main():
         # Save to CSV file
         output_file = 'restaurant_info.csv'
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            fieldnames = ['title', 'address', 'social_links', 'phone', 'image', 'link']
+            fieldnames = ['title', 'address', 'social_links', 'phone', 'image', 'link', 'is_retail']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
             writer.writeheader()
             for restaurant in restaurant_info:
+                restaurant['is_retail'] = True
                 writer.writerow(restaurant)
         
         print(f"\nRestaurant information saved to {output_file}")
